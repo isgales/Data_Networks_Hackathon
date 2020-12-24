@@ -2,68 +2,125 @@
 import struct
 import socket
 import threading
+import time
+import logging
+
+logging.basicConfig(level=logging.DEBUG,
+                    format='(%(threadName)-9s) %(message)s',)
 
 HOST = '127.0.0.1'  # Standard loopback interface address (localhost)
 PORT = 65432        # Port to listen on (non-privileged ports are > 1023)
 # global stop_game = True
 # global stop_client = True
 # global update_db = False
-global num_of_clients = 0
-stop_game = threading.Event()
-stop_client = threading.Event()
-update_db = threading.Event()
+num_of_clients = 0
+VictoryPrint = ""
+WelcomePrint = ""
+b_startgame = True
+clients_wait = threading.Event()
 
 
-        print('Connected by', addr)
-        while True:
-            data = conn.recv(1024)
-            if data:
-                counter += 1
-            conn.sendall(data)
-    update_db.set()
+def start_game(db):
+    logging.debug('Starting game !')
+    global WelcomePrint, b_startgame, VictoryPrint, clients_wait
+    winner= 0
+    WelcomePrint = "Welcome to Keyboard Spamming Battle Royale.\n"
+    for group_id in db.keys():
+        WelcomePrint += "Group{group_id}:\n==\n"
+        for name in db[group_id].keys():
+            WelcomePrint += "{name}\n"
+    clients_wait.set()
+    time.sleep(10)
+    clients_wait.clear()
+    b_startgame = False
+    while num_of_clients != 4 :
+        pass
+    logging.debug('game finished. calculating results')
+    score_group_1 = sum(db[1].values())
+    score_group_2 = sum(db[2].values())
+    VictoryPrint = """Game over!
+                    Group 1 typed in {score_group_1} characters. Group 2 typed in {score_group_2} characters."""
+    if score_group_1 > score_group_2:
+        winner = 1
+    elif score_group_1 < score_group_2:
+        winner = 2
+    if winner == 0:
+        VictoryPrint +="""
+                        It's a Tie!
+                        """
+    else:
+        VictoryPrint += """   
+                        Group {i} wins!
+                        Congratulations to the winners:
+                        ==
+                        {db[i].keys[0]}
+                        {db[i].keys[1]}"""
+    clients_wait.set()
+    logging.debug('Release clients to send Victory print')
 
-def start_game():
-    stop_game
-
-def RunServerSocket():
+def RunServerSocket(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind((HOST, PORT))
+        s.bind((socket.gethostbyname(), port))
         s.settimeout(10000)
-        s.listen()
-        client_names = []
+        s.listen(4)             ## added 4 -> clients
+        db = {1:{},2:{}}
+        global num_of_clients
         while num_of_clients < 4:
             conn, addr = s.accept()
-            client_name = conn.recv(1024)
-            client_names.append(client_name)
-            threading.Thread(name="client_thread", target=RunClientSocket, args=(conn, database, num_of_clients%2, client_name))
-            num_of_clients += 1
-        start_game()
+            logging.debug("New connection : [{add} ,{conn}]")
+            data = conn.recv(1024)
+            client_name = data.decode("utf-8")
+            if db[1].keys() < 2:
+                db[1][client_name] = 0
+            elif db[2].keys() < 2:
+                db[2][client_name] = 0
+            if(num_of_clients < 4):
+                threading.Thread(name="client_thread", target=RunClientSocket, args=(conn, db , num_of_clients%2, client_name)).start()
+    num_of_clients = 0
+    start_game(db)
 
-def RunClientSocket(__socket, database, group_num, client_name): 
+def wait():
+    global num_of_clients 
+    num_of_clients += 1
+    clients_wait.wait()
+
+def RunClientSocket(__socket, db, group_num, client_name): 
     """
     param: database = {group_num : {client_id : score} }
     """
     counter = 0
+    global num_of_clients
     with __socket:
         # while TCP connection should be open.
         # wait for all clients to connect - main thread wakes them up.
-        wait_for_clients()
+        wait()
         # while game is on
-        while stop_game:
+        while b_startgame:
             data = __socket.recv(1024)
             if data:
                 counter += 1
         # game is over, update database
-        database[group_num][client_id] = counter
+        db[group_num][client_name] = counter
         # wait for all threads to update the db - main thread wakes them up.
-        wait_update_db()
+        wait()
         # get final score from main thread, send it to client
-        __socket.sendall(String)
+        __socket.sendall(VictoryPrint)
+        logging.debug('{__socket} sended Victory print')
     #end connection with client
+    num_of_clients -= 1
+    db[group_num].pop(client_name)
+    logging.debug("{client_name} as disconnected. closing socket {__sicket}.")
 
-def wait_update_db():
-    num_of_clients += 1
-    update_db.wait()
 
-def wait_for_clients():
-    stop_client.wait()
+
+# def wait_for_clients():
+#     stop_client.wait()
+
+
+
+while True:
+    num_of_clients = 0
+    VictoryPrint = ""
+    WelcomePrint = ""
+    b_startgame = True
+    RunServerSocket(PORT)
