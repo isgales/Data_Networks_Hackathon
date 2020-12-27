@@ -4,6 +4,7 @@ import socket
 import threading
 import time
 import logging
+from multiprocessing.pool import Pool
 
 logging.basicConfig(level=logging.DEBUG,
                     format='(%(threadName)-9s) %(message)s',)
@@ -36,7 +37,7 @@ def start_game(db):
         if real_num_of_client != check_change:
             real_num_of_client = check_change
     logging.debug('game finished. calculating results')
-    score_group_1 = sum(db[1].values())
+    score_group_1 = sum(db[1].values()[0])
     score_group_2 = sum(db[2].values())
     VictoryPrint = """Game over!
                     Group 1 typed in {score_group_1} characters. Group 2 typed in {score_group_2} characters."""
@@ -50,34 +51,46 @@ def start_game(db):
                         """
     else:
         VictoryPrint += """   
-                        Group {i} wins!
+                        Group {winner} wins!
                         Congratulations to the winners:
                         =="""
-        for name in db[i].keys():
+        for name in db[winner].keys():
             VictoryPrint +="\n{name}"
     clients_wait.set()
     logging.debug('Release clients to send Victory print')
 
-def RunServerSocket(port):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+def RunServerSocket(port, pool):
+    global b_startgame, num_of_clients1
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.bind((socket.gethostbyname(), port))
         s.settimeout(10000)
         s.listen(4)             ## added 4 -> clients
         db = {1:{},2:{}}
-        global num_of_clients1
         while num_of_clients1 < 4:
             conn, addr = s.accept()
             logging.debug("New connection : [{add} ,{conn}]")
             data = conn.recv(1024)
             client_name = data.decode("utf-8")
-            if db[1].keys() < 2:
-                db[1][client_name] = 0
-            elif db[2].keys() < 2:
-                db[2][client_name] = 0
+            if len(db[1].keys()) < 2:
+                group = 1
+                db[group][client_name] = [0] 
+            elif len(db[2].keys()) < 2:
+                group = 2
+                db[group][client_name] = [0]         
             if(num_of_clients1 < 4):
-                threading.Thread(name="client_thread", target=RunClientSocket, args=(conn, db , num_of_clients1%2, client_name)).start()
-    num_of_clients1 = 0
-    start_game(db)
+                db[group][client_name].append(threading.Thread(name="client_thread", target=RunClientSocket, args=(conn, db , num_of_clients1%2, client_name)).start())
+        s.settimeout()
+        num_of_clients1 = 0
+        start_game(db)
+    except TimeoutError:
+        for group in db.keys():
+            for client in db[group].keys():
+                db[group][client][1]._stop().set()
+            
+            
+
+    logging.debug('Main TCP thread closed.')
 
 def wait():
     global num_of_clients1 
@@ -96,11 +109,11 @@ def RunClientSocket(__socket, db, group_num, client_name):
         wait()
         # while game is on
         while b_startgame:
-            data = __socket.recv(1024)
+            data = __socket.recv(1) ### check size
             if data:
                 counter += 1
         # game is over, update database
-        db[group_num][client_name] = counter
+        db[group_num][client_name][0] = counter
         # wait for all threads to update the db - main thread wakes them up.
         wait()
         # get final score from main thread, send it to client
@@ -122,4 +135,5 @@ while True:
     VictoryPrint = ""
     WelcomePrint = ""
     b_startgame = True
-    RunServerSocket(PORT)
+    pool = Pool(processes=4)
+    RunServerSocket(PORT, pool)
