@@ -4,6 +4,7 @@ import socket
 import threading
 import time
 import logging
+import traceback
 
 logging.basicConfig(level=logging.DEBUG,
                     format='(%(threadName)-9s) %(message)s',)
@@ -13,6 +14,7 @@ UDP_PORT = 13117
 LOCAL_HOST = '127.0.0.1'  # Standard loopback interface address (localhost)
 TCP_PORT = 65432        # Port to listen on (non-privileged ports are > 1023)
 num_of_clients = 0
+waiting_semaphore = threading.Semaphore(0) # as number of clients
 VictoryPrint = ""
 WelcomePrint = ""
 b_startgame = True
@@ -40,8 +42,8 @@ def start_game(db):
         if real_num_of_client != check_change:
             real_num_of_client = check_change
     logging.debug('game finished. calculating results')
-    score_group_1 = sum(db[1].values()[0])
-    score_group_2 = sum(db[2].values())
+    score_group_1 = sum(list(db[1].values()))
+    score_group_2 = sum(list(db[2].values()))
     VictoryPrint = f"""Game over!
                     Group 1 typed in {score_group_1} characters. Group 2 typed in {score_group_2} characters."""
     if score_group_1 > score_group_2:
@@ -105,22 +107,24 @@ def RunServerSocket(tcp_port, SUBNET,udp_port):
                 group = 2
             if(num_of_clients < 4):
                 thread_pool.append(threading.Thread(name="client_thread", target=RunClientSocket, args=(
-                    conn, db, group, addr)).start())
+                    conn, db, group, addr)).start())       
         s.settimeout(5000)
+        for i in range(num_of_clients):
+            waiting_semaphore.acquire()
         num_of_clients = 0
         start_game(db)
     except :
         print(time.time()-start_time)
         print('time out!')
-        for group in db.keys():
-            for client in db[group].keys():
-                db[group][client][1]._stop()
+        for thread in thread_pool:
+            thread._stop()
     print('Main TCP thread closed.')
 
 
 def wait():
-    global num_of_clients
-    #print("waiting...")
+    global clients_wait
+    waiting_semaphore.release()
+    print("waiting...")
     clients_wait.wait()
     #print("awake...")
 
@@ -135,9 +139,10 @@ def RunClientSocket(__socket, db, group_num, address):
     try:
         data = __socket.recv(1024)
         #print(data)
+        #time.sleep(2)
         client_name = data.decode("utf-8")
+        db[group_num][client_name] = 0
         print(client_name)
-        db[group_num][client_name] = [0]
         # while TCP connection should be open.
         # wait for all clients to connect - main thread wakes them up.
         wait()
@@ -146,22 +151,34 @@ def RunClientSocket(__socket, db, group_num, address):
          #check!!!
         print("before while")
         # while game is on
+        start_time = time.time()
         while b_startgame:
-            print("in while")
-            data = __socket.recv(1)  # check size
-            print("wait recv while")
-            if data:
-                counter += 1
+            #print("in while")
+            try:
+                __socket.settimeout(10-(time.time()-start_time))
+                data = __socket.recv(1)  # check size
+                #print("wait recv while")
+                char = data.decode("utf-8")
+                print(f'{client_name} || {char}')
+                if data:
+                    counter += 1
+            except socket.timeout:
+                pass
+        __socket.settimeout(5000)
+        __socket.sendall(b'stop')
+        print("after send stop")
         # game is over, update database
-        db[group_num][client_name][0] = counter
+        db[group_num][client_name] = counter
         # wait for all threads to update the db - main thread wakes them up.
         num_of_clients += 1
         wait()
         # get final score from main thread, send it to client
-        __socket.sendall(VictoryPrint)
+        __socket.sendall(bytes(VictoryPrint,"utf-8"))
         logging.debug(f'{__socket} sended Victory print')
+    except socket.timeout:
+        print('disconnect: timeout')
     except:
-        print('disconnect')
+        print('disconnect: else')  
     # end connection with client
     if client_name is None:
         return
