@@ -10,10 +10,7 @@ logging.basicConfig(level=logging.DEBUG,
 
 HOST = '127.0.0.1'  # Standard loopback interface address (localhost)
 PORT = 65432        # Port to listen on (non-privileged ports are > 1023)
-# global stop_game = True
-# global stop_client = True
-# global update_db = False
-num_of_clients = 0
+num_of_clients1 = 0
 VictoryPrint = ""
 WelcomePrint = ""
 b_startgame = True
@@ -33,8 +30,11 @@ def start_game(db):
     time.sleep(10)
     clients_wait.clear()
     b_startgame = False
-    while num_of_clients != 4 :
-        pass
+    real_num_of_client = len(db[1].values()) + len(db[2].values())
+    while num_of_clients1 != real_num_of_client :
+        check_change = len(db[1].values()) + len(db[2].values())
+        if real_num_of_client != check_change:
+            real_num_of_client = check_change
     logging.debug('game finished. calculating results')
     score_group_1 = sum(db[1].values())
     score_group_2 = sum(db[2].values())
@@ -52,9 +52,9 @@ def start_game(db):
         VictoryPrint += """   
                         Group {i} wins!
                         Congratulations to the winners:
-                        ==
-                        {db[i].keys[0]}
-                        {db[i].keys[1]}"""
+                        =="""
+        for name in db[i].keys():
+            VictoryPrint +="\n{name}"
     clients_wait.set()
     logging.debug('Release clients to send Victory print')
 
@@ -64,8 +64,8 @@ def RunServerSocket(port):
         s.settimeout(10000)
         s.listen(4)             ## added 4 -> clients
         db = {1:{},2:{}}
-        global num_of_clients
-        while num_of_clients < 4:
+        global num_of_clients1
+        while num_of_clients1 < 4:
             conn, addr = s.accept()
             logging.debug("New connection : [{add} ,{conn}]")
             data = conn.recv(1024)
@@ -74,14 +74,14 @@ def RunServerSocket(port):
                 db[1][client_name] = 0
             elif db[2].keys() < 2:
                 db[2][client_name] = 0
-            if(num_of_clients < 4):
-                threading.Thread(name="client_thread", target=RunClientSocket, args=(conn, db , num_of_clients%2, client_name)).start()
-    num_of_clients = 0
+            if(num_of_clients1 < 4):
+                threading.Thread(name="client_thread", target=RunClientSocket, args=(conn, db , num_of_clients1%2, client_name)).start()
+    num_of_clients1 = 0
     start_game(db)
 
 def wait():
-    global num_of_clients 
-    num_of_clients += 1
+    global num_of_clients1 
+    num_of_clients1 += 1
     clients_wait.wait()
 
 def RunClientSocket(__socket, db, group_num, client_name): 
@@ -89,7 +89,7 @@ def RunClientSocket(__socket, db, group_num, client_name):
     param: database = {group_num : {client_id : score} }
     """
     counter = 0
-    global num_of_clients
+    global num_of_clients1
     with __socket:
         # while TCP connection should be open.
         # wait for all clients to connect - main thread wakes them up.
@@ -107,7 +107,7 @@ def RunClientSocket(__socket, db, group_num, client_name):
         __socket.sendall(VictoryPrint)
         logging.debug('{__socket} sended Victory print')
     #end connection with client
-    num_of_clients -= 1
+    num_of_clients1 -= 1
     db[group_num].pop(client_name)
     logging.debug("{client_name} as disconnected. closing socket {__sicket}.")
 
@@ -117,9 +117,8 @@ def RunClientSocket(__socket, db, group_num, client_name):
 #     stop_client.wait()
 
 
-
 while True:
-    num_of_clients = 0
+    num_of_clients1 = 0
     VictoryPrint = ""
     WelcomePrint = ""
     b_startgame = True
