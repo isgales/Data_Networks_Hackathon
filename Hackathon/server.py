@@ -17,13 +17,13 @@ num_of_clients = 0
 waiting_semaphore = threading.Semaphore(0) # as number of clients
 VictoryPrint = ""
 WelcomePrint = ""
-b_startgame = True
+b_startgame = False
 clients_wait = threading.Event()
 
 
 
 def start_game(db):
-    logging.debug('Starting game !')
+  #  logging.debug('Starting game !')
     global WelcomePrint, b_startgame, VictoryPrint, clients_wait
     winner = 0
     WelcomePrint = "Welcome to Keyboard Spamming Battle Royale.\n"
@@ -36,9 +36,12 @@ def start_game(db):
     time.sleep(10)
     clients_wait.clear()
     b_startgame = False
-    real_num_of_client = len(db[1].values()) + len(db[2].values())
+    real_num_of_client = len(db[1].keys()) + len(db[2].keys())
     while num_of_clients != real_num_of_client:
-        check_change = len(db[1].values()) + len(db[2].values())
+        if real_num_of_client == 0:
+            print("None clients")
+            return
+        check_change = len(db[1].keys()) + len(db[2].keys())
         if real_num_of_client != check_change:
             real_num_of_client = check_change
     logging.debug('game finished. calculating results')
@@ -66,7 +69,7 @@ def start_game(db):
 
 
 def send_UDP_Broadcast(start_time, SUBNET, udp_port, tcp_port):
-    global num_of_clients
+    global num_of_clients, b_startgame
     addr = (SUBNET, udp_port)
     feedbeef = int('0xfeedbeef', 16)
     space = int('0x2', 16)
@@ -75,20 +78,25 @@ def send_UDP_Broadcast(start_time, SUBNET, udp_port, tcp_port):
     pack = struct.pack('!III', feedbeef, space, port_tcp)
     print("send udp pack  time: " +"  num: " + str(num_of_clients))
     while (time.time() - start_time < 10 and num_of_clients < 4):
+        if b_startgame:
+            break
         client_socket.sendto(pack, addr)
+    print("stop Udp")
+    client_socket.close()
 
 
 def RunServerSocket(tcp_port, SUBNET,udp_port):
     global b_startgame, num_of_clients
+    socket_pool =[]
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.bind((socket.gethostbyname(socket.gethostname()), tcp_port))
         #socket.setdefaulttimeout(10)
         start_time = time.time()   
         s.listen(4)  # added 4 -> clients
-        threading.Thread(target=send_UDP_Broadcast, args=(start_time, SUBNET, udp_port, tcp_port)).start()
+        Udp_thread = threading.Thread(target=send_UDP_Broadcast, args=(start_time, SUBNET, udp_port, tcp_port))
+        Udp_thread.start()
         db = {1: {}, 2: {}}
-        thread_pool =[]
         while num_of_clients < 1:
             s.settimeout(10-(time.time()-start_time))
             #print(10-(time.time()-start_time))
@@ -98,7 +106,7 @@ def RunServerSocket(tcp_port, SUBNET,udp_port):
             conn, addr = s.accept()
             num_of_clients += 1
             conn.settimeout(10-(time.time()-start_time)) 
-            print(f"New connection : [{addr} ,{conn}]")
+            print(f"New connection : [{addr}]")
             #logging.debug(f"New connection : [{add} ,{conn}]")
             #print("after recv")
             if len(db[1].keys()) < 2:
@@ -106,25 +114,28 @@ def RunServerSocket(tcp_port, SUBNET,udp_port):
             elif len(db[2].keys()) < 2:
                 group = 2
             if(num_of_clients < 4):
-                thread_pool.append(threading.Thread(name="client_thread", target=RunClientSocket, args=(
-                    conn, db, group, addr)).start())       
+                threading.Thread(name="client_thread", target=RunClientSocket, args=(
+                    conn, db, group, addr)).start()    
+                socket_pool.append(conn)
+        b_startgame = True
         s.settimeout(5000)
         for i in range(num_of_clients):
             waiting_semaphore.acquire()
         num_of_clients = 0
         start_game(db)
-    except :
-        print(time.time()-start_time)
-        print('time out!')
-        for thread in thread_pool:
-            thread._stop()
+    except socket.timeout:
+        print('server time out!')
+        for t_socket in socket_pool:
+            print(t_socket.fileno)
+            if t_socket.fileno == -1:
+                continue
+            t_socket.sendall(b'break')  
     print('Main TCP thread closed.')
 
 
 def wait():
     global clients_wait
     waiting_semaphore.release()
-    print("waiting...")
     clients_wait.wait()
     #print("awake...")
 
@@ -149,7 +160,6 @@ def RunClientSocket(__socket, db, group_num, address):
         __socket.settimeout(5000)
         __socket.sendall(bytes(WelcomePrint,"utf-8"))
          #check!!!
-        print("before while")
         # while game is on
         start_time = time.time()
         while b_startgame:
@@ -164,9 +174,11 @@ def RunClientSocket(__socket, db, group_num, address):
                     counter += 1
             except socket.timeout:
                 pass
+            except ValueError:
+                pass
+        __socket.shutdown(socket.SHUT_RD)
         __socket.settimeout(5000)
         __socket.sendall(b'stop')
-        print("after send stop")
         # game is over, update database
         db[group_num][client_name] = counter
         # wait for all threads to update the db - main thread wakes them up.
@@ -174,17 +186,21 @@ def RunClientSocket(__socket, db, group_num, address):
         wait()
         # get final score from main thread, send it to client
         __socket.sendall(bytes(VictoryPrint,"utf-8"))
-        logging.debug(f'{__socket} sended Victory print')
+        __socket.shutdown(socket.SHUT_WR)
+        #print(f'{__socket} sended Victory print')
     except socket.timeout:
-        print('disconnect: timeout')
+        traceback.print_exc()
+        print(f'disconnect: timeout {client_name}')
     except:
-        print('disconnect: else')  
+        traceback.print_exc()
+        print(f'disconnect: else {client_name}')  
     # end connection with client
     if client_name is None:
         return
     num_of_clients -= 1
     db[group_num].pop(client_name)
-    logging.debug(f"{client_name} as disconnected. closing socket {__socket}.")
+    #print(f"{client_name} as disconnected. closing socket {__socket}.")
+    __socket.close()
 
 
 # def wait_for_clients():
@@ -194,5 +210,5 @@ while True:
     num_of_clients = 0
     VictoryPrint = ""
     WelcomePrint = ""
-    b_startgame = True
+    b_startgame = False
     RunServerSocket(TCP_PORT, SUBNET,UDP_PORT)
