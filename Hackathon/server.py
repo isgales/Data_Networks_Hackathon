@@ -26,7 +26,7 @@ def setWelcomeMsg(db):
     for group_id in db.keys():
         WelcomePrint += f"Group{group_id}:\n==\n"
         for name in db[group_id].keys():
-            WelcomePrint += f"{name}\n"
+            WelcomePrint += f"{name}"
 
 def setVictoryMsg(score_group_1, score_group_2, db):
     global VictoryPrint
@@ -49,6 +49,13 @@ def setVictoryMsg(score_group_1, score_group_2, db):
         for name in db[winner].keys():
             VictoryPrint += f"\n{name}"
 
+def checkForClients(db):
+    real_num_of_client = len(db[1].keys()) + len(db[2].keys())
+    if real_num_of_client == 0:
+        print("None clients")
+        return False
+    return True
+    
 def start_game(db):
     global WelcomePrint, b_startgame, VictoryPrint, clients_wait
     setWelcomeMsg(db)
@@ -56,23 +63,26 @@ def start_game(db):
     # notify all client threads to start the game
     clients_wait.set()
     # main thread sleeps for 10 seconds while clients threads play
+    if not checkForClients(db):
+        return
     time.sleep(10)
     clients_wait.clear()
     b_startgame = False
     # game is finished, calculate results
     real_num_of_client = len(db[1].keys()) + len(db[2].keys())
+    print('num of clients: ', num_of_clients)
+    print('real num of clients: ', real_num_of_client)
     while num_of_clients != real_num_of_client:
-        if real_num_of_client == 0:
-            print("None clients")
-            return
         check_change = len(db[1].keys()) + len(db[2].keys())
         if real_num_of_client != check_change:
             real_num_of_client = check_change
+
+
     score_group_1 = sum(list(db[1].values()))
     score_group_2 = sum(list(db[2].values()))
-    
     setVictoryMsg(score_group_1, score_group_2, db)
     clients_wait.set()
+    clients_wait.clear()
 
 
 def send_UDP_Broadcast(start_time, SUBNET, udp_port, tcp_port):
@@ -98,7 +108,7 @@ def acceptClients(start_time, db, accepting_socket, socket_pool):
     # run until 10 seconds pass from the moment the server started
     while (time.time()-start_time) < 10:
         # there is still available spot for new client
-        if(num_of_clients < 4):
+        if(num_of_clients < 1):
             # accept client
             accepting_socket.settimeout(10-(time.time()-start_time))
             conn, addr = accepting_socket.accept()
@@ -130,19 +140,22 @@ def RunServerSocket(tcp_port, SUBNET,udp_port):
         # accept clients
         acceptClients(start_time, db, s, socket_pool)
         b_startgame = True
-        s.close()
+        print ('before semaphore - serversocket: ', db)
         for i in range(num_of_clients):
             waiting_semaphore.acquire()
         num_of_clients = 0
         # all client are ready to play (resigitered in db) - still waiting
+        print ('before start game - serversocket: ', db)
         start_game(db)
+        print('before shutdown server socket')
+        # s.shutdown(socket.SHUT_RDWR)   
     except socket.timeout:
         print('server time out!')
-        for t_socket in socket_pool:
-            print(t_socket.fileno)
-            if t_socket.fileno == -1:
-                continue
-            t_socket.sendall(b'break')  
+    for t_socket in socket_pool:
+        print(t_socket.fileno)
+        if t_socket.fileno != -1:
+            t_socket.close()
+    s.close()
     print('Main TCP thread closed.')
 
 
@@ -158,7 +171,7 @@ def registerClient(__socket, db, group_num):
     #time.sleep(2)
     client_name = data.decode("utf-8")
     db[group_num][client_name] = 0
-    print(client_name)
+    print(f'{client_name} is registered to db in {group_num}')
     return client_name
 
 def RunClientSocket(__socket, db, group_num, address):
@@ -169,13 +182,13 @@ def RunClientSocket(__socket, db, group_num, address):
     global num_of_clients ,WelcomePrint ,VictoryPrint
     client_name = None
     try:
+        print ('before register - clientsocket: ', db)
         client_name = registerClient(__socket, db, group_num)
+        print ('after register - clientsocket: ', db)
         # while TCP connection should be open.
         # wait for all clients to connect - main thread wakes them up.
         wait()
-        __socket.settimeout(5000)
         __socket.sendall(bytes(WelcomePrint,"utf-8"))
-         #check!!!
         # while game is on
         start_time = time.time()
         while b_startgame:
@@ -192,7 +205,8 @@ def RunClientSocket(__socket, db, group_num, address):
                 pass
             except ValueError:
                 pass
-        __socket.settimeout(5000)
+        print('before client socket shutdown after game')
+        __socket.shutdown(socket.SHUT_RD)
         # game is over, update database
         db[group_num][client_name] = counter
         # wait for all threads to update the db - main thread wakes them up.
@@ -200,21 +214,23 @@ def RunClientSocket(__socket, db, group_num, address):
         wait()
         # get final score from main thread, send it to client
         __socket.sendall(bytes(VictoryPrint,"utf-8"))
+        __socket.shutdown(socket.SHUT_WR)
         __socket.close()
         #print(f'{__socket} sended Victory print')
     except socket.timeout:
+        __socket.close()
         traceback.print_exc()
         print(f'disconnect: timeout {client_name}')
     except:
+        __socket.close()
         traceback.print_exc()
         print(f'disconnect: else {client_name}')  
     # end connection with client
-    __socket.close()
     if client_name is None:
         return
     num_of_clients -= 1
     db[group_num].pop(client_name)
-    waiting_semaphore.release()
+    # waiting_semaphore.release()
     #print(f"{client_name} as disconnected. closing socket {__socket}.")
    
 
@@ -227,5 +243,5 @@ while True:
     VictoryPrint = ""
     WelcomePrint = ""
     b_startgame = False
-    waiting_semaphore = threading.Semaphore(0)
+    # waiting_semaphore = threading.Semaphore(0)
     RunServerSocket(TCP_PORT, SUBNET,UDP_PORT)

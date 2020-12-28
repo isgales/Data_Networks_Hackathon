@@ -7,14 +7,13 @@ import traceback
 
 stop_game = False
 break_game = False
+VictoryPrint = ""
 
 def stop_game_func(server_socket,asd):
-    global stop_game, break_game
+    global stop_game, break_game, VictoryPrint
     server_socket.settimeout(10.1)
     try:
-        msg = server_socket.recv(1024)
-        if msg == b'break':
-            break_game =True
+        VictoryPrint = server_socket.recv(1024).decode('utf-8')
     except socket.timeout:
         print('recv timeout client')
         break_game =True
@@ -43,39 +42,36 @@ def playGame(server_socket):
             server_socket.sendall(char)
         if break_game:
             print("yalla bye")
-            server_socket.close()
-            continue
+            break
 
 while True:
     stop_game = False
     break_game = False
     try:
         # get server socket details
+        print('search for server')
         address, port = getServerSocket()
         # connect to this socket
+        print('connect to server')
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.connect((address,port))
         server_socket.sendall(b'Gal\n')
         # recieve welcome msg
+        print(server_socket)
         Welcome = server_socket.recv(1024)
         print(Welcome.decode("utf-8"))
         # start thread awaiting to stop the game, in the meanwhile, play
-       
-       
-       
+        print('before game')
         threading.Thread(target=stop_game_func, args=(server_socket,213)).start()
         playGame(server_socket)
-        
-        
-        
-        # shutdown msg 
-        server_socket.shutdown(socket.SHUT_WR)
+        server_socket.close()
         # recieve victory msg
-        Victory = server_socket.recv(1024)
-        print(Victory.decode("utf-8")) 
-        server_socket.shutdown(socket.SHUT_RD)
+        print(VictoryPrint)
     except socket.timeout:
         print("timeout")
+        server_socket.close()
     except:
+        server_socket.close()
         traceback.print_exc()
         print("errorororoororor")
+    print('finished while')
