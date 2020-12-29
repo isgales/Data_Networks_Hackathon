@@ -11,14 +11,13 @@ VictoryPrint = " "
 
 def stop_game_func(server_socket,asd):
     global stop_game, break_game, VictoryPrint
-    server_socket.settimeout(10.1)
+    server_socket.settimeout(12)
     try:
-        VictoryPrint = server_socket.recv(1024).decode("utf-8")           
+        VictoryPrint = server_socket.recv(1024)       
     except socket.timeout:
         print('recv timeout client')
         break_game =True
     stop_game = True
-
 
 def getServerSocket():
     print('Client started, listening for offer requests...')
@@ -40,14 +39,19 @@ def playGame(server_socket):
     while not stop_game:
         if msvcrt.kbhit():
             char = msvcrt.getch() 
-            server_socket.send(char)
+            try:
+                server_socket.send(char)
+            except BrokenPipeError:
+                pass
         if break_game:
             print("yalla bye")
             break
+    server_socket.shutdown(socket.SHUT_WR)
 
 while True:
     stop_game = False
     break_game = False
+    VictoryPrint = " "
     try:
         # get server socket details
         # print('search for server')
@@ -56,7 +60,7 @@ while True:
         # print('connect to server')
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.connect((address,port))
-        server_socket.sendall(b'Gal\n')
+        server_socket.sendall(b'Yesh l! bu!bu! gad0l\n')
         # recieve welcome msg
        
         Welcome = server_socket.recv(1024)
@@ -66,14 +70,16 @@ while True:
         # print('before game')
         threading.Thread(target=stop_game_func, args=(server_socket,213)).start()
         playGame(server_socket)
+        # print(f'socket status ', server_socket)
         server_socket.close()
         # recieve victory msg
-        print(VictoryPrint)
+        print(VictoryPrint.decode("utf-8"))
     except socket.timeout:
         print("timeout")
-        server_socket.close()
+        server_socket.close()        
     except:
         server_socket.close()
-        traceback.print_exc()
+        #traceback.print_exc()
         print("errorororoororor")
+    # print(f'after socket status ', server_socket)
     print('Server disconnected, listening for offer requests...')
