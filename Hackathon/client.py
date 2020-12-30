@@ -60,7 +60,7 @@ while True:
         # print('connect to server')
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.connect((address,port))
-        server_socket.sendall(b'Yesh l! bu!bu! gad0l\n')
+        server_socket.sendall(b'gal\n')
         # recieve welcome msg
        
         Welcome = server_socket.recv(1024)

@@ -39,34 +39,30 @@ def acquireSemaphoreBySockets(socket_pool):
 
 def setWelcomeMsg(db):
     global WelcomePrint
-    # WelcomePrint  = r"""
-    #                              ||          
-    #                              ||                                          
-    #    -==-____        _--_   ___||___   _--_        ____-==-                
-    #       ---__----___/ __ \--  || |  --/ __ \___----__---                   
-    #            ---__ / /  \ \   \\ /   / /  \ \ __---                        
-    #                 -\|    \ \  _\/_  / /    |/-                             
-    #                __/ \_()/\ \//  \\/ /\()_/ \__                            
-    #               /_ \ / ~~  `-'    `-'  ~~ \ / _\                           
-    #              |/_\ |(~/   /\  /\  /\   \~)| /_\|                          
-    #               /_  | /   (O ` \/ ' O)   \ |  _\                           
-    #                _\ \_\/\___--~~~~--___/\/_/ /_                            
-    #               /    _/\^\ V~~V/~V~~V /^/\_    \                           
-    #               \/\ / \ \^\  |( /    /^/ / \ /\/                           
-    #                  \\   /\^\  \\\   /^/\   //                              
-    #                    \ | /\^\  \/  /^/\ | /                                
-    #                      |( /\_\^__^/_/\ )|                                  
-    #                      | \\__--__--__// |                                  
-    #                     /~~~~~~~~~~~~~~~~~~\                                 
-    #                    |/|  /\  /\/\  /\  |\|                                
-    #                    ||| | | ( () ) | | |||                                
-    #                    |\|  \/  \/\/  \/  |/|                                
-    #                     \__________________/                                 
-    #                     | (____------____) |                 """
-    WelcomePrint = "\nWelcome to Keyboard Spamming Battle Royale.\n"
+    WelcomePrint  = r"""
+       ____    _    ______   __
+      | __ )  / \  | __ ) \ / /
+      |  _ \ / _ \ |  _ \\ V / 
+      | |_) / ___ \| |_) || |  
+      |____/_/   \_\____/ |_|  
+           ____  ___ _____     
+          / ___|/ _ \_   _|    
+         | |  _| | | || |      
+         | |_| | |_| || |      
+          \____|\___/ |_|      
+               _    ____ _  __ 
+              / \  / ___| |/ / 
+             / _ \| |   | ' /  
+            / ___ \ |___| . \  
+           /_/   \_\____|_|\_\ 
+    
+
+https://www.youtube.com/watch?v=X53ZSxkQ3Ho&ab_channel=SirMixALotVEVO"""
+    WelcomePrint += "\n\nWelcome to Keyboard Spamming Battle Royale.\n"
     for group_id in db.keys():
-        WelcomePrint += f"Group{group_id}:\n==\n"
-        for name in db[group_id].keys():
+        WelcomePrint += f"\e[1;31mGroup{group_id}:\e[0m\n==\n"
+        for ID in db[group_id].keys():
+            name = db[group_id][ID][0]
             WelcomePrint += f"{name}"
     WelcomePrint += "\nStart pressing keys on your keyboard as fast as you can!!"
     
@@ -82,7 +78,8 @@ def setVictoryMsg(score_group_1, score_group_2, db):
         VictoryPrint += "It's a Tie!\n"
     else:
         VictoryPrint += f"Group {winner} wins!\nCongratulations to the winners:\n==\n"
-        for name in db[winner].keys():
+        for ID in db[winner].keys():
+            name = db[winner][ID][0]
             VictoryPrint += f"{name}"
 
 def checkForClients(db):
@@ -110,8 +107,8 @@ def start_game(db):
     #         real_num_of_client = check_change
     # waiting_semaphore = threading.Semaphore(0)
     acquireSemaphoreByDB(db)
-    score_group_1 = sum(list(db[1].values()))
-    score_group_2 = sum(list(db[2].values()))
+    score_group_1 = sum([id[1] for id in db[1].values()])
+    score_group_2 = sum([id[1] for id in db[2].values()])
     setVictoryMsg(score_group_1, score_group_2, db)
     clients_wait.set()
 
@@ -136,6 +133,7 @@ def send_UDP_Broadcast(start_time, SUBNET, udp_port, tcp_port):
 
 def acceptClients(start_time, db, accepting_socket, socket_pool):
     global num_of_clients
+    ID = 0
     # run until 10 seconds pass from the moment the server started
     while (time.time()-start_time) < 10:
         # there is still available spot for new client
@@ -159,7 +157,8 @@ def acceptClients(start_time, db, accepting_socket, socket_pool):
             else:
                 group = 2
             threading.Thread(name="client_thread", target=RunClientSocket, args=(
-                conn, db, group, addr)).start()    
+                conn, db, group, ID, addr)).start()   
+            ID += 1 
             socket_pool.append(conn)
 
 def RunServerSocket(tcp_port, SUBNET,udp_port):
@@ -204,16 +203,16 @@ def wait():
     clients_wait.wait()
     # print("awake...")
 
-def registerClient(__socket, db, group_num):
+def registerClient(__socket, db, group_num, ID):
     data = __socket.recv(1024)
     #print(data)
     #time.sleep(2)
     client_name = data.decode("utf-8")
-    db[group_num][client_name] = 0
+    db[group_num][ID] = [client_name,0]
     # print(f'{client_name} is registered to db in {group_num}')
     return client_name
 
-def RunClientSocket(__socket, db, group_num, address):
+def RunClientSocket(__socket, db, group_num, ID, address):
     """
     param: database = {group_num : {client_id : score} }
     """
@@ -223,7 +222,7 @@ def RunClientSocket(__socket, db, group_num, address):
     try:
         # print ('before register - clientsocket: ', db)
         try:
-            client_name = registerClient(__socket, db, group_num)
+            client_name = registerClient(__socket, db, group_num, ID)
             data = __socket.recv(1024)
         except socket.timeout:
             pass
@@ -234,7 +233,7 @@ def RunClientSocket(__socket, db, group_num, address):
                 # print('Main in acquire // after qeueu')
                 waiting_semaphore.release()
             # print('exception pop')
-            db[group_num].pop(client_name)
+            db[group_num].pop(ID)
             return
         wait()
         print ('after register - clientsocket: ', db)
@@ -258,14 +257,14 @@ def RunClientSocket(__socket, db, group_num, address):
             except socket.timeout:
                 pass
             except:
-                db[group_num][client_name] = counter
+                db[group_num][ID][1] = counter
                 __socket.close()
                 wait()
                 return
         # print('before client socket shutdown after game')
         #__socket.shutdown(socket.SHUT_RD)
         # game is over, update database
-        db[group_num][client_name] = counter
+        db[group_num][ID][1] = counter
         # wait for all threads to update the db - main thread wakes them up.
         #num_of_clients += 1
         wait()
