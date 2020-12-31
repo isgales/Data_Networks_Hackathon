@@ -11,6 +11,9 @@ import traceback
 stop_game = False
 break_game = False
 VictoryPrint = " "
+UDP_PORT = 13117
+Magic_cookie = 0xfeedbeef
+Client_Name = 'BABY GOT ACK'
 
 def stop_game_func(server_socket):
     """
@@ -22,7 +25,7 @@ def stop_game_func(server_socket):
     server_socket.settimeout(12)
     try:
         VictoryPrint = server_socket.recv(1024)       
-    except socket.timeout:
+    except :
         # got timeout, raise flag to 'break' the game.
         break_game =True
     # Raise flag to stop the game, since we got victory msg.
@@ -36,8 +39,9 @@ def getServerSocket():
     return: IP address of server, TCP port to connect.
     """
     print('Client started, listening for offer requests...')
+    global UDP_PORT, Magic_cookie
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    server_socket.bind(('', 13117))
+    server_socket.bind(('', UDP_PORT))
     while True:
         pack, address = server_socket.recvfrom(1024)
         try:
@@ -45,7 +49,7 @@ def getServerSocket():
             message = struct.unpack('>IbH', pack)
             # Extract the message components.
             x = [x for x in message]
-            if x[0] == int(0xfeedbeef) :
+            if x[0] == int(Magic_cookie) :
                 port = x[2]
                 break
         except:
@@ -89,7 +93,7 @@ while True:
         # connect to this socket
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.connect((address,port))
-        server_socket.sendall(b'BABY GOT ACK\n')
+        server_socket.sendall(bytes(Client_Name+"\n","utf-8"))
         # recieve welcome msg
         Welcome = server_socket.recv(1024)
         print(Welcome.decode("utf-8"))

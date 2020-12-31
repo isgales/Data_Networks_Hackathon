@@ -19,6 +19,7 @@ WelcomePrint = ""
 b_startgame = False
 clients_wait = threading.Event()
 num_of_clients_limit = 4
+Magic_Cookie = 0xfeedbeef
 
 def acquireSemaphoreByDB(db):
     """
@@ -147,11 +148,11 @@ def send_UDP_Broadcast(start_time, SUBNET, udp_port, tcp_port):
     param: udp_port - the port which the server listens at.
     param: tcp_port - the port which the server will open TCP connection with the future clients.
     """
-    global num_of_clients, b_startgame
+    global num_of_clients, b_startgame, Magic_Cookie
     addr = (SUBNET, udp_port)
     # Format of the msg: I - 4 bytes, b - 1 byte, H - 2 bytes.
     # Message components: Magic cookie, space, tcp port.
-    pack = struct.pack('>IbH', 0xfeedbeef, 0x2, tcp_port)
+    pack = struct.pack('>IbH', Magic_Cookie, 0x2, tcp_port)
     # set the broadcast socket.
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     client_socket.setsockopt(socket.SOL_SOCKET,socket.SO_BROADCAST,1)
