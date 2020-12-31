@@ -8,12 +8,14 @@ import msvcrt
 #import getch
 import traceback
 
+# Global variables.
 stop_game = False
 break_game = False
 VictoryPrint = " "
 UDP_PORT = 13117
 Magic_cookie = 0xfeedbeef
 Client_Name = 'BABY GOT ACK'
+Buffer_size = 1024
 
 def stop_game_func(server_socket):
     """
@@ -24,7 +26,7 @@ def stop_game_func(server_socket):
     global stop_game, break_game, VictoryPrint
     server_socket.settimeout(12)
     try:
-        VictoryPrint = server_socket.recv(1024)       
+        VictoryPrint = server_socket.recv(Buffer_size)       
     except :
         # got timeout, raise flag to 'break' the game.
         break_game =True
@@ -43,7 +45,7 @@ def getServerSocket():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server_socket.bind(('', UDP_PORT))
     while True:
-        pack, address = server_socket.recvfrom(1024)
+        pack, address = server_socket.recvfrom(Buffer_size)
         try:
             # Interpret the msg by: I - 4 bytes, b - 1 byte, H - 2 bytes.
             message = struct.unpack('>IbH', pack)

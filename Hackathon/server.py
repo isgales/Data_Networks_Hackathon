@@ -20,6 +20,7 @@ b_startgame = False
 clients_wait = threading.Event()
 num_of_clients_limit = 4
 Magic_Cookie = 0xfeedbeef
+Buffer_size = 1024
 
 def acquireSemaphoreByDB(db):
     """
@@ -266,7 +267,8 @@ def registerClient(__socket, db, group_num, ID):
     param: ID - the client's ID.
     return: client's name as was given from the client.
     """
-    data = __socket.recv(1024)
+    global Buffer_size
+    data = __socket.recv(Buffer_size)
     client_name = data.decode("utf-8")
     db[group_num][ID] = [client_name,0]
     return client_name
@@ -281,13 +283,13 @@ def RunClientSocket(__socket, db, group_num, ID, address):
     param: address - the client's ip address.
     """
     counter = 0
-    global num_of_clients ,WelcomePrint ,VictoryPrint, waiting_semaphore, b_startgame
+    global num_of_clients ,WelcomePrint ,VictoryPrint, waiting_semaphore, b_startgame, Buffer_size
     client_name = None
     try:
         # try register the client while queue.
         try:
             client_name = registerClient(__socket, db, group_num, ID)
-            data = __socket.recv(1024)
+            data = __socket.recv(Buffer_size)
         except socket.timeout:
             pass
         except:
@@ -328,7 +330,7 @@ def RunClientSocket(__socket, db, group_num, ID, address):
         __socket.sendall(bytes(VictoryPrint,"utf-8"))  
         # Waiting for FIN flag from the client, so we know it finished the connection.
         while True:
-            data = __socket.recv(1024)
+            data = __socket.recv(Buffer_size)
             if data == b'':
                 break
         __socket.close()
