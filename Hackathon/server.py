@@ -5,9 +5,10 @@ import threading
 import time
 import logging
 import traceback
+from colorama import init, Fore
+init(convert=True)
 
-
-SUBNET = '10.0.0.255'
+SUBNET = '192.168.0.255'
 UDP_PORT = 13117
 TCP_PORT = 65432 # Port to listen on (non-privileged ports are > 1023)
 
@@ -53,34 +54,37 @@ def setWelcomeMsg(db):
     param: db - the DB that holds the registered clients.
     """
     global WelcomePrint
-    WelcomePrint  = r"""
+    WelcomePrint = Fore.LIGHTYELLOW_EX
+    WelcomePrint += r"""
        ____    _    ______   __
       | __ )  / \  | __ ) \ / /
       |  _ \ / _ \ |  _ \\ V / 
       | |_) / ___ \| |_) || |  
-      |____/_/   \_\____/ |_|  
+      |____/_/   \_\____/ |_|  """
+    WelcomePrint += Fore.LIGHTMAGENTA_EX
+    WelcomePrint += r"""  
            ____  ___ _____     
           / ___|/ _ \_   _|    
          | |  _| | | || |      
          | |_| | |_| || |      
-          \____|\___/ |_|      
+          \____|\___/ |_|      """
+    WelcomePrint +=Fore.LIGHTYELLOW_EX
+    WelcomePrint += r"""  
                _    ____ _  __ 
               / \  / ___| |/ / 
              / _ \| |   | ' /  
             / ___ \ |___| . \  
-           /_/   \_\____|_|\_\ 
-    
-
-https://www.youtube.com/watch?v=X53ZSxkQ3Ho&ab_channel=SirMixALotVEVO"""
-    WelcomePrint += "\n\nWelcome to Keyboard Spamming Battle Royale.\n"
+           /_/   \_\____|_|\_\ """
+    WelcomePrint += Fore.RED +'\n\nhttps://www.youtube.com/watch?v=X53ZSxkQ3Ho&ab_channel=SirMixALotVEVO'
+    WelcomePrint += Fore.LIGHTYELLOW_EX +"\n\nWelcome to " +Fore.LIGHTMAGENTA_EX +"Keyboard Spamming Battle Royale.\n"
     # for each group
     for group_id in db.keys():
-        WelcomePrint += f"Group{group_id}:\n==\n"
+        WelcomePrint +=Fore.LIGHTYELLOW_EX + f"Group{group_id}:\n==\n" 
         # for each client
         for ID in db[group_id].keys():
             name = db[group_id][ID][0]
-            WelcomePrint += f"{name}"
-    WelcomePrint += "\nStart pressing keys on your keyboard as fast as you can!!"
+            WelcomePrint += Fore.LIGHTMAGENTA_EX + f"{name}" 
+    WelcomePrint += Fore.LIGHTYELLOW_EX + "\nStart pressing keys on your keyboard as fast as you can!!" + Fore.WHITE
     
 def setVictoryMsg(score_group_1, score_group_2, db):
     """
@@ -90,7 +94,7 @@ def setVictoryMsg(score_group_1, score_group_2, db):
     param: db - the DB that holds the registered clients.
     """
     global VictoryPrint
-    VictoryPrint = f"Game over!\nGroup 1 typed in {score_group_1} characters. Group 2 typed in {score_group_2} characters.\n"
+    VictoryPrint = Fore.LIGHTMAGENTA_EX + "Game over!\nGroup 1 typed in"+Fore.LIGHTYELLOW_EX+f" {score_group_1} "+Fore.LIGHTMAGENTA_EX +"characters. Group 2 typed in"+Fore.LIGHTYELLOW_EX+f" {score_group_2} "+Fore.LIGHTMAGENTA_EX +"characters.\n"
     winner = 0
     # set the winning group
     if score_group_1 > score_group_2:
@@ -98,12 +102,12 @@ def setVictoryMsg(score_group_1, score_group_2, db):
     elif score_group_1 < score_group_2:
         winner = 2
     if winner == 0:
-        VictoryPrint += "It's a Tie!\n"
+        VictoryPrint += Fore.RED +"It's a Tie!\n" + Fore.WHITE
     else:
-        VictoryPrint += f"Group {winner} wins!\nCongratulations to the winners:\n==\n"
+        VictoryPrint += Fore.LIGHTYELLOW_EX+"Group "+Fore.RED+f"{winner} " +Fore.LIGHTYELLOW_EX+"wins!\nCongratulations to the winners:\n==\n"
         for ID in db[winner].keys():
             name = db[winner][ID][0]
-            VictoryPrint += f"{name}"
+            VictoryPrint += Fore.LIGHTMAGENTA_EX +f"{name}"+Fore.WHITE
 
 def checkForClients(db):
     """
@@ -300,6 +304,7 @@ def RunClientSocket(__socket, db, group_num, ID, address):
                 waiting_semaphore.release()
             # pop out from DB - client didn't even play.
             db[group_num].pop(ID)
+            print(f"disconnected : {__socket[0]}")
             return
         # wait for all clients to connect - main thread wakes them up.
         wait()
@@ -321,6 +326,7 @@ def RunClientSocket(__socket, db, group_num, ID, address):
                 db[group_num][ID][1] = counter
                 __socket.close()
                 wait()
+                print(f"disconnected : {client_name}")
                 return
         # game is over, update database
         db[group_num][ID][1] = counter
@@ -336,6 +342,7 @@ def RunClientSocket(__socket, db, group_num, ID, address):
         __socket.close()
         wait()
     except:
+        print(f"disconnected : {client_name}")
         wait()
     # if client disconnected before registration, return.
     if client_name is None:

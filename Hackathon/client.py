@@ -7,6 +7,8 @@ import msvcrt
 # Linux
 #import getch
 import traceback
+from colorama import init, Fore
+init(convert=True)
 
 # Global variables.
 stop_game = False
@@ -97,7 +99,7 @@ while True:
         server_socket.connect((address,port))
         server_socket.sendall(bytes(Client_Name+"\n","utf-8"))
         # recieve welcome msg
-        Welcome = server_socket.recv(1024)
+        Welcome = server_socket.recv(Buffer_size)
         print(Welcome.decode("utf-8"))
         # start thread awaiting to stop the game, in the meanwhile, play
         threading.Thread(target=stop_game_func, args=(server_socket,)).start()
